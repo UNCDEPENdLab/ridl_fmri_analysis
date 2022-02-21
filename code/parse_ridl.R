@@ -87,6 +87,7 @@ prop.table(table(onset_diff < .1))
 prop.table(table(onset_diff > 1.2))
 
 # there is some dependency in the offsets -- when onset_diff is 1.0, feedback_diff is often 0.0 and vice versa
-cbind(feedback_diff, onset_diff) %>% head(n=20)
+# this seems to depend in part on whether it is an accrej or new_learn trial.
+data.frame(feedback_diff, onset_diff, trial_df$trial_type) %>% head(n = 20)
 
 fwrite(trial_df, file="../output/example_trial_data.csv")

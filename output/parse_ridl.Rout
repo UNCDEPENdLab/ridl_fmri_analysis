@@ -79,9 +79,9 @@ Type 'q()' to quit R.
 > ridl_dir <- "/proj/mnhallqlab/users/michael/ridl_fmri_analysis/data/momentum"
 > trial_df <- parse_ridl(sub_id = "220256", ridl_dir = ridl_dir)
 Setting matlab.path
-Script created: /tmp/RtmpjMkwAv/file253327abada9.m
+Script created: /tmp/RtmpEr4Ty5/file79637cfae579.m
 Command run is:
-'/nas/longleaf/apps/matlab/2021b/bin'/matlab  -nodesktop -nosplash -nodisplay -r  "try, run('/tmp/RtmpjMkwAv/file253327abada9.m'); catch err, disp(err.message); exit(1); end; exit(0);"
+'/nas/longleaf/apps/matlab/2021b/bin'/matlab  -nodesktop -nosplash -nodisplay -r  "try, run('/tmp/RtmpEr4Ty5/file79637cfae579.m'); catch err, disp(err.message); exit(1); end; exit(0);"
 [?1h=
                                                                                                       < M A T L A B (R) >
                                                                                             Copyright 1984-2021 The MathWorks, Inc.
@@ -137,31 +137,32 @@ For product information, visit www.mathworks.com.
 0.8253012 0.1746988 
 > 
 > # there is some dependency in the offsets -- when onset_diff is 1.0, feedback_diff is often 0.0 and vice versa
-> cbind(feedback_diff, onset_diff) %>% head(n=20)
-      feedback_diff onset_diff
- [1,]    2.26180496 0.07808495
- [2,]    1.04805609 0.08702803
- [3,]    1.03779683 0.04985809
- [4,]    0.06262900 9.45981503
- [5,]    0.05705988 1.07886600
- [6,]    0.04290596 1.07166314
- [7,]    2.64084796 0.03957200
- [8,]    1.05488487 0.05934095
- [9,]    2.76306312 0.05227494
-[10,]    2.89318900 2.57169199
-[11,]    2.49237908 0.04584694
-[12,]    1.04649509 0.05324888
-[13,]    0.03490099 1.04633403
-[14,]    1.89375905 0.04450798
-[15,]    0.04967594 8.19230103
-[16,]    0.04651406 1.06847787
-[17,]    1.02709802 0.04063082
-[18,]    0.02984402 1.04068089
-[19,]    0.04259682 1.05922318
-[20,]    0.03067702 3.59915113
+> # this seems to depend in part on whether it is an accrej or new_learn trial.
+> data.frame(feedback_diff, onset_diff, trial_df$trial_type) %>% head(n = 20)
+   feedback_diff onset_diff trial_df.trial_type
+1     2.26180496 0.07808495           new_learn
+2     1.04805609 0.08702803           new_learn
+3     1.03779683 0.04985809           new_learn
+4     0.06262900 9.45981503              accrej
+5     0.05705988 1.07886600              accrej
+6     0.04290596 1.07166314              accrej
+7     2.64084796 0.03957200           new_learn
+8     1.05488487 0.05934095           new_learn
+9     2.76306312 0.05227494           new_learn
+10    2.89318900 2.57169199           new_learn
+11    2.49237908 0.04584694           new_learn
+12    1.04649509 0.05324888           new_learn
+13    0.03490099 1.04633403              accrej
+14    1.89375905 0.04450798           new_learn
+15    0.04967594 8.19230103              accrej
+16    0.04651406 1.06847787              accrej
+17    1.02709802 0.04063082           new_learn
+18    0.02984402 1.04068089              accrej
+19    0.04259682 1.05922318              accrej
+20    0.03067702 3.59915113              accrej
 > 
 > fwrite(trial_df, file="../output/example_trial_data.csv")
 > 
 > proc.time()
    user  system elapsed 
- 13.705   3.700  14.536 
+ 13.989   4.049  15.234 
