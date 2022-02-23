@@ -38,13 +38,15 @@ parse_ridl <- function(sub_id, ridl_dir, matlab_dir = "/nas/longleaf/apps/matlab
     mutate(
       trial = trial + 1, # switch to one-based indexing
       # type = if_else(stim2 == -1000, "accrej", "newlearn")
-      trial_type = if_else(feedback == 0, "accrej", "new_learn") # human-readable trial code
+      trial_type = if_else(feedback == 0, "accrej", "new_learn"), # human-readable trial code
+      feedback_time = if_else(trial_type == "new_learn", feedback_time - 1.0, feedback_time) # for new learn trials, feedback_time is accidentally offset
     ) %>%
     dplyr::rename(iti = isi_length) %>% # ITI in seconds (starts trial in current scheme)
     group_by(block) %>%
     mutate(
       run_number = cur_group_id(),
-      next_start = dplyr::lead(trial_started)
+      next_start = dplyr::lead(trial_started),
+      too_slow_lead = dplyr::lead(times_too_slow) # are there repeats on the next trial (bumps out timing)
     ) %>%
     ungroup() %>%
     dplyr::select(id, run_number, trial, block, everything())
@@ -54,40 +56,3 @@ parse_ridl <- function(sub_id, ridl_dir, matlab_dir = "/nas/longleaf/apps/matlab
 
   return(trial_df)
 }
-
-ridl_dir <- "/proj/mnhallqlab/users/michael/ridl_fmri_analysis/data/momentum"
-trial_df <- parse_ridl(sub_id = "220256", ridl_dir = ridl_dir)
-
-#txt <- data.table::fread("/proj/mnhallqlab/studies/momentum/clpipe/data_onsets/220256/Subject_220256.txt")
-
-# blows up
-#x <- read.mat("/proj/mnhallqlab/studies/momentum/clpipe/data_onsets/220256/log_file.mat")
-
-# checks
-calc_rt <- trial_df$choice_time - trial_df$stim_time
-rt_diff <- trial_df$reaction_time - calc_rt # looks reasonable
-summary(rt_diff)
-calc_feedback <- trial_df$choice_time + trial_df$feedback_lag
-feedback_diff <- trial_df$feedback_time - calc_feedback
-
-summary(feedback_diff)
-
-# I would have guessed that if feedback_time is the onset of trial feedback, then the next start should be around 1.0s, with maybe a bit of an extension for 
-onset_diff <- trial_df$next_start - trial_df$feedback_time
-
-summary(onset_diff)
-
-# about 40% of trials do have a ~1.0s difference
-prop.table(table(abs(onset_diff - 1) < .1))
-
-# 40% of trials have ~ 0s difference
-prop.table(table(onset_diff < .1))
-
-# 17% have differences > 1.2s
-prop.table(table(onset_diff > 1.2))
-
-# there is some dependency in the offsets -- when onset_diff is 1.0, feedback_diff is often 0.0 and vice versa
-# this seems to depend in part on whether it is an accrej or new_learn trial.
-data.frame(feedback_diff, onset_diff, trial_df$trial_type) %>% head(n = 20)
-
-fwrite(trial_df, file="../output/example_trial_data.csv")
