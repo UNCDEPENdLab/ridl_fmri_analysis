@@ -1,7 +1,13 @@
-parse_ridl <- function(sub_id, ridl_dir, matlab_dir = "/nas/longleaf/apps/matlab/2021b/bin") {
+parse_ridl <- function(sub_id = NULL, ridl_dir, matlab_dir = "/nas/longleaf/apps/matlab/2021b/bin") {
   pacman::p_load(checkmate, data.table, dplyr, matlabr, tidyr, glue)
   checkmate::assert_directory_exists(ridl_dir)
-  sub_dir <- file.path(ridl_dir, sub_id)
+  if (is.null(sub_id)) {
+    # assume that ridl_dir is the full path to the subject folder
+    sub_dir <- ridl_dir
+  } else {
+    sub_dir <- file.path(ridl_dir, sub_id)
+  }
+  
   checkmate::assert_directory_exists(sub_dir)
 
   # four files in each dir -- only need log at present

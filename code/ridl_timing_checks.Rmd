@@ -1,0 +1,127 @@
+---
+title: "RiDL timing spot checks"
+author: "Michael Hallquist"
+date: "23 Feb 2022"
+output:
+  html_document:
+    code_folding: show
+    df_print: kable
+    mathjax: default
+    number_sections: no
+    theme: spacelab
+    toc: yes
+    toc_depth: 2
+---
+
+```{r setup}
+#repo_dir <- "~/Data_Analysis/ridl_fmri_analysis"
+repo_dir <- "/proj/mnhallqlab/users/michael/ridl_fmri_analysis"
+pacman::p_load(dplyr, data.table)
+ridl_dir <- file.path(repo_dir, "data", "momentum")
+setwd(repo_dir)
+source("code/parse_ridl.R")
+
+matlab_dir <- "/System/Volumes/Data/Applications/MATLAB_R2020b.app/bin"
+```
+
+## Read in the data using parser
+
+```{r}
+trial_df <- bind_rows(readRDS("/proj/mnhallqlab/users/michael/ridl_fmri_analysis/code/tmp_ridl.rds")) %>%
+  filter(id != "540001")
+#trial_df <- parse_ridl(sub_id = "220256", ridl_dir = ridl_dir, matlab_dir = matlab_dir)
+```
+
+## Expected versus observed RT times
+
+```{r}
+# spot checks on timing
+# expected versus observed RT
+calc_rt <- trial_df$choice_time - trial_df$stim_time
+rt_diff <- trial_df$reaction_time - calc_rt 
+summary(rt_diff) # looks reasonable
+hist(rt_diff)
+```
+
+## Expected versus observed feedback onset times
+
+Most times are reasonable (< .2). There is a right tail with values between .2 and 2 seconds
+
+```{r}
+# expected versus observed feedback onset
+calc_feedback <- trial_df$choice_time + trial_df$feedback_lag # expected feedback onset time
+feedback_diff <- trial_df$feedback_time - calc_feedback
+
+summary(feedback_diff)
+hist(feedback_diff)
+```
+
+## Expected versus observed onset times of next trial
+
+```{r}
+# expected versus observed onset of next trial
+trial_df$onset_diff <- trial_df$next_start - (trial_df$feedback_time + 1.0) # 1.0 is fixed duration of feedback event
+big_delays <- which(trial_df$onset_diff > 2)
+summary(trial_df$onset_diff)
+hist(trial_df$onset_diff)
+trial_df %>% filter(abs(onset_diff) > 1)
+```
+
+## Delays after every 10 trials
+
+Should be 2.5s break after every 10
+
+```{r}
+# Every 10 trials, the participant gets a 2.5s break
+expected_delays <- which(trial_df$trial %% 10 == 0)
+table(abs(trial_df$onset_diff[expected_delays] - 2.5) < .2)
+```
+
+There is one anomaly with a > 2.5 delay after trial 50. It is explained by the subject being too slow on trial 51, leading to repeat
+```{r}
+# this seems to be a situation where the subject was too slow on trial 51, which explains the delay on a 10-aligned trial
+as.data.frame(trial_df[expected_delays[which(abs(trial_df$onset_diff[expected_delays] - 2.5) > .2)],])
+```
+
+## Unexplained delays
+
+These all appear to reflect trial repeats due to slowness
+```{r}
+# these trials are not on the every-10 trials, but have > 2s delays
+weird_delays <- setdiff(big_delays, expected_delays)
+
+# all of the unexpected delays occur on trials where the next trial was too slow
+# thus, all of these delays are explained by the repetition of the trial (and this implies that the times in the file are the final presentation)
+trial_df$too_slow_lead[weird_delays]
+
+#trial_df %>% filter(times_too_slow > 0) %>% View()
+```
+
+```{r, eval = FALSE, include = FALSE}
+# this code was from the initial checks before the 1.0s adjustment
+
+# about 40% of trials do have a ~1.0s difference
+prop.table(table(abs(trial_df$onset_diff - 1) < .1))
+
+# 17% have differences > 1.2s
+prop.table(table(trial_df$onset_diff > 1.2))
+
+# old: this is explained by accrej feedback_time being onset and newlearn being offset. Fixed in parse_ridl.R by subtracting 1.0 in newlearn
+# there is some dependency in the offsets -- when onset_diff is 1.0, feedback_diff is often 0.0 and vice versa
+# this seems to depend in part on whether it is an accrej or new_learn trial.
+data.frame(feedback_diff, trial_df$onset_diff, trial_df$trial_type) %>% head(n = 20)
+```
+
+## Export data to file
+
+```{r}
+
+# write to file
+fwrite(trial_df, file=file.path(repo_dir, "output", "example_trial_data.csv"))
+
+
+## leftovers
+#txt <- data.table::fread("/proj/mnhallqlab/studies/momentum/clpipe/data_onsets/220256/Subject_220256.txt")
+
+```
+
