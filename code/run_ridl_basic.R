@@ -2,38 +2,72 @@ library(dplyr)
 library(emmeans)
 library(fmri.pipeline)
 library(readr)
+library(glue)
 
 # get trial data
-trial_df <- parse_ridl_all("/proj/mnhallqlab/studies/momentum/clpipe/data_onsets")
+setwd("/proj/mnhallqlab/projects/ridl_fmri_analysis/code")
+trial_df <- read.csv("../output/ridl_combined_fmri.csv.gz") %>%
+  mutate(id=as.character(id))
 
+run_data_from_bids <- function(bids_dir, modality="func", type="task", task_name="ridl") {
+  checkmate::assert_directory_exists(bids_dir)
+  sub_dirs <- list.dirs(bids_dir, recursive = FALSE)
+  slist <- lapply(sub_dirs, function(ss) {
+    expect_dir <- file.path(ss, modality)
+    if (!checkmate::test_directory_exists(expect_dir)) {
+      warning(glue("Cannot find expected modality directory: {expect_dir}"))
+      return(NULL)
+    }
 
-subject_df <- readRDS("/proj/mnhallqlab/users/michael/fmri.pipeline/inst/example_files/mmclock_subject_data.rds") %>%
-  mutate(mr_dir=paste0(mr_dir, "/mni_5mm_aroma")) #make sure we're looking in the right folder
+    # I wonder if these could diverge in order
+    nii_files <- Sys.glob(glue("{expect_dir}/sub*_{type}-{task_name}*_postproccessed.nii.gz"))
+    if (length(nii_files) == 0L) {
+      warning(glue("No NIfTI file matches in: {expect_dir}"))
+      return(NULL)
+    }
+    confound_files <- Sys.glob(glue("{expect_dir}/sub*_{type}-{task_name}*-confounds*.tsv"))
+
+    if (length(nii_files) != length(confound_files)) {
+      warning(glue("Cannot align nifti and confound files for {expect_dir}"))
+      return(NULL)
+    }
+    id <- sub("^sub-", "", basename(ss))
+    run_number <- as.integer(sub(glue(".*sub-.*_{type}-{task_name}(\\d+).*"), "\\1", nii_files, perl = TRUE)) # NB. this is not a BIDS-compliant approach. Needs to be _run-01
+    data.frame(id = id, run_number = run_number, run_nifti = nii_files, confound_input_file = confound_files)
+  })
+
+  bind_rows(slist)
+}
+
+run_df <- run_data_from_bids("/proj/mnhallqlab/studies/momentum/clpipe/data_postproc2")
+
+xtabs(~id, run_df)
+
+subject_df <- run_df %>%
+  group_by(id) %>%
+  filter(row_number() == 1) %>%
+  mutate(mr_dir = dirname(run_nifti)) %>%
+  select(id, mr_dir) %>%
+  ungroup()
 
 # run_df <- readRDS("/proj/mnhallqlab/users/michael/fmri.pipeline/inst/example_files/mmclock_run_data.rds")
 
-meg_ranefs <- readRDS("/proj/mnhallqlab/projects/clock_analysis/meg/data/MEG_betas_wide_echange_vmax_reward_Nov30_2021.RDS") %>%
-  dplyr::select(-contains("corr")) %>%
-  mutate(id = as.integer(id)) %>%
-  mutate(across(.cols = starts_with("avg_"), .fns = ~ as.vector(scale(.x)))) # z-score betas
-
-gpa <- setup_glm_pipeline(analysis_name="mmclock_nov2021", scheduler="slurm",
-  output_directory = "/proj/mnhallqlab/users/michael/mmclock_entropy",
-  subject_data=subject_df, trial_data=trial_df, # run_data=run_df,
-  tr=1.0, drop_volumes = 2,
-  n_expected_runs=8,
+gpa <- setup_glm_pipeline(analysis_name="basic_apr2022", scheduler="slurm",
+  output_directory = "/proj/mnhallqlab/users/michael/ridl_fmri",
+  trial_data=trial_df, subject_data = subject_df, run_data=run_df,
+  tr=.635, drop_volumes = 2,
   l1_models=NULL, l2_models=NULL, l3_models=NULL,
-  fmri_file_regex="nfaswuktm_clock[1-8]_5\\.nii\\.gz",
-  fmri_path_regex="clock[0-9]",
-  run_number_regex=".*clock([0-9]+)_5.*",
+  n_expected_runs=4,
   confound_settings=list(
-    motion_params_file = "motion.par",
-    confound_input_file="nuisance_regressors.txt",
-    confound_input_colnames = c("csf", "dcsf", "wm", "dwm"),
-    l1_confound_regressors = c("csf", "dcsf", "wm", "dwm"),
-    exclude_run = "max(FD) > 5 | sum(FD > .9)/length(FD) > .10", #this must evaluate to a scalar per run
-    exclude_subject = "n_good_runs < 4",
-    truncate_run = "(FD > 0.9 & time > last_offset) | (time > last_offset + last_isi)",
+    confound_input_colnames = c("csf", "csf_derivative1", "white_matter", "white_matter_derivative1"), # assumption
+    l1_confound_regressors = c("csf", "csf_derivative1", "white_matter", "white_matter_derivative1"),
+    na_strings=c("NA", "n/a"), #weird fmriprep-ism for confound files
+    #exclude_run = "max(framewise_displacement) > 5 | sum(framewise_displacement > .5)/length(framewise_displacement) > .15", #this must evaluate to a scalar per run
+    #exclude_subject = "n_good_runs < 2",
+    exclude_run = NULL,
+    exclude_subject = NULL,
+    #truncate_run = "framewise_displacement > 2 & (time > last_offset + )" # 2 seconds after last offset
+    truncate_run = "(framewise_displacement > 0.9 & time > last_offset) | (time > last_offset + last_isi)",
     spike_volumes = NULL
   ),
   parallel=list(
@@ -41,17 +75,13 @@ gpa <- setup_glm_pipeline(analysis_name="mmclock_nov2021", scheduler="slurm",
   )
 )
 
-# gpa <- build_l1_models(gpa, from_spec_file = "entropy_all.yaml")
+#l1_models <- gpa$l1_models
 
+gpa <- build_l1_models(gpa, from_spec_file = "ridl_basic_l1.yaml")
 gpa <- build_l2_models(gpa)
 gpa <- build_l3_models(gpa)
-
-gpa <- readRDS("mmclock_nov2021_addmegbetas.rds")
-
-gpa$subject_data <- gpa$subject_data %>% left_join(meg_ranefs, by = "id")
-
-gpa <- build_l3_models(gpa)
-saveRDS(gpa, file = "mmclock_nov2021_addmegbetas.rds")
+#gpa$parallel$compute_environment <- c("module use /proj/mnhallqlab/sw/modules", "module load r/4.1.2_depend")
+saveRDS(gpa, file = "/proj/mnhallqlab/users/michael/ridl_fmri/gpa_snapshot_20apr2022.rds")
 
 run_glm_pipeline(gpa)
 
