@@ -47,7 +47,7 @@ Most times are reasonable (< .2). There is a right tail with values between .2 a
 
 ```{r}
 # expected versus observed feedback onset
-calc_feedback <- trial_df$choice_time + trial_df$feedback_lag # expected feedback onset time
+calc_feedback <- trial_df$choice_time + trial_df$feedback_isi # expected feedback onset time
 feedback_diff <- trial_df$feedback_time - calc_feedback
 
 summary(feedback_diff)
@@ -58,7 +58,7 @@ hist(feedback_diff)
 
 ```{r}
 # expected versus observed onset of next trial
-onset_diff <- trial_df$next_start - (trial_df$feedback_time + 1.0) # 1.0 is fixed duration of feedback event
+onset_diff <- trial_df$trial_started_next - (trial_df$feedback_time + 1.0) # 1.0 is fixed duration of feedback event
 big_delays <- which(onset_diff > 2)
 summary(onset_diff)
 hist(onset_diff)

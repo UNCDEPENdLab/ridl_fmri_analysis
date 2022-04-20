@@ -1,7 +1,7 @@
 ---
-title: "RiDL timing spot checks"
+title: "RiDL group level timing checks"
 author: "Michael Hallquist"
-date: "23 Feb 2022"
+date: "20 Apr 2022"
 output:
   html_document:
     code_folding: show
@@ -11,117 +11,291 @@ output:
     theme: spacelab
     toc: yes
     toc_depth: 2
+editor_options: 
+  chunk_output_type: console
 ---
 
 ```{r setup}
 #repo_dir <- "~/Data_Analysis/ridl_fmri_analysis"
-repo_dir <- "/proj/mnhallqlab/users/michael/ridl_fmri_analysis"
-pacman::p_load(dplyr, data.table)
-ridl_dir <- file.path(repo_dir, "data", "momentum")
-setwd(repo_dir)
-source("code/parse_ridl.R")
+#repo_dir <- "/proj/mnhallqlab/users/michael/ridl_fmri_analysis"
+setwd("~/Data_Analysis/ridl_fmri_analysis/code")
+pacman::p_load(dplyr, data.table, lattice, ggplot2, kableExtra, skimr)
+options(digits=2)
+ridl_dir <- normalizePath(file.path("../", "data", "momentum"))
+source("parse_ridl.R")
+source("parse_ridl_all.R")
 
-matlab_dir <- "/System/Volumes/Data/Applications/MATLAB_R2020b.app/bin"
+matlab_dir <- "/System/Volumes/Data/Applications/MATLAB_R2021b.app/bin"
+
+#helper function for printing tables in a consistent format
+kable_table <- function(df, n=Inf, p=Inf) { 
+  p <- min(ncol(df), p)
+  df %>% head(n=n) %>% dplyr::select(1:!!p) %>% kable() %>% kable_styling(bootstrap_options = c("striped", "condensed"), full_width = F)
+}
+
 ```
 
-## Read in the data using parser
+```{r, message=FALSE}
+# read in data with ridl parser
+# trial_df <- parse_ridl(sub_id = "220256", ridl_dir = ridl_dir, matlab_dir = matlab_dir)
+# trial_df <- parse_ridl(sub_id = "221518", ridl_dir = ridl_dir, matlab_dir = matlab_dir, force=T)
+# trial_df <- parse_ridl(sub_id = "540039", ridl_dir = ridl_dir, matlab_dir = matlab_dir, force=T)
+# trial_df <- parse_ridl(sub_id = "221604", ridl_dir = ridl_dir, matlab_dir = matlab_dir, force=T)
+
+trial_df <- parse_ridl_all(ridl_dir, matlab_dir = matlab_dir, force=FALSE) %>%
+  mutate(was_slow = factor(times_too_slow > 0), was_slow_lead=factor(too_slow_lead > 0))
+```
+
+# Problems with missed trials
+
+If a subject does not complete a trial, there is often a prepopulated row of all zeros. This seems to persist
+if the trial was never completed or if the block was repeated with a new data file (need to combine log_file.mat and log_file_0.mat?).
+
+Two subjects have bad trials so far. 
 
 ```{r}
-trial_df <- bind_rows(readRDS("/proj/mnhallqlab/users/michael/ridl_fmri_analysis/code/tmp_ridl.rds")) %>%
-  filter(id != "540001")
-#trial_df <- parse_ridl(sub_id = "220256", ridl_dir = ridl_dir, matlab_dir = matlab_dir)
+trial_df %>% group_by(id) %>% tally(bad_trial) %>% filter(n > 0) %>% kable_table()
 ```
 
-## Expected versus observed RT times
+# Problems with low trial numbers
+
+```{r}
+trial_df %>% group_by(id) %>% tally() %>% filter(n < 336) %>% kable_table()
+```
+
+I suspect there are two data files for these folks that need to be hand-stitched.
+
+# Problem with rt = 0
+
+Subjects with RTs < .05 seconds.
+
+```{r}
+zero_rt  <- trial_df %>% filter(reaction_time < .05)
+zero_rt %>% xtabs(~id + trial_type, .)
+```
+
+```{r}
+zero_rt %>% group_by(id, run_number) %>%
+  select(id, run_number, trial, trial_type, block, choice, outcome, iti_ideal, reaction_time)  %>%
+  filter(row_number() == 1) %>%
+  kable_table()
+```
+
+For now, dropping these trials. These may need to be added as nuisance trials in GLMs?
+
+```{r}
+trial_df <- trial_df %>% filter(reaction_time >= .05)
+```
+
+## Distribution of (good) RTs
+
+```{r}
+hist(trial_df$reaction_time, main="Overall RT histogram")
+```
+
+# Expected versus observed RT times
+
+Calculate the reaction time as `choice_time - stim_time` and compare to `reaction_time`.
+
+This distribution generally looks reasonable, with 221604 showing a lot of differences in the .5s or greater range.
 
 ```{r}
 # spot checks on timing
 # expected versus observed RT
 calc_rt <- trial_df$choice_time - trial_df$stim_time
-rt_diff <- trial_df$reaction_time - calc_rt 
-summary(rt_diff) # looks reasonable
-hist(rt_diff)
+trial_df$rt_diff <- trial_df$reaction_time - calc_rt 
+summary(trial_df$rt_diff) # looks reasonable
+hist(trial_df$rt_diff)
 ```
 
-## Expected versus observed feedback onset times
+## by subject
 
+```{r}
+lattice::histogram(~rt_diff | factor(id), trial_df)
+```
+
+## tally subjects with odd RTs
+
+These are subjects who have differences in the reaction_time variable compared to the
+calculated reaction time. Check the `output/rt_diff_problems.csv` file for details
+
+```{r}
+bad_rt <- trial_df %>% filter(abs(rt_diff) > .2)
+bad_rt %>% xtabs(~id, .)
+write.csv(bad_rt, file="../output/rt_diff_problems.csv", row.names=F)
+```
+
+# Expected versus observed feedback onset times
+
+Here, we calculate the expected onset of theedback as `choice_time + feedback_isi` and compare
+that against the timestamp for `feedback_time` (recorded by the experiment).
 Most times are reasonable (< .2). There is a right tail with values between .2 and 2 seconds
+
+My sense is that these resulted from some sort of stimulus loading or SQLite operation that induced
+variable (small) delays.
+
+Note that the delays are heavily in the new_learn trials.
 
 ```{r}
 # expected versus observed feedback onset
-calc_feedback <- trial_df$choice_time + trial_df$feedback_lag # expected feedback onset time
-feedback_diff <- trial_df$feedback_time - calc_feedback
+calc_feedback <- trial_df$choice_time + trial_df$feedback_isi # expected feedback onset time
+trial_df$feedback_diff <- trial_df$feedback_time - calc_feedback
 
-summary(feedback_diff)
-hist(feedback_diff)
+summary(trial_df$feedback_diff)
+hist(trial_df$feedback_diff, main="Differences in calculated versus recorded feedback times")
+
+# this was all due to 221604
+#trial_df %>% filter(feedback_diff < 0) %>% kable_table()
+
+# 221604 is an early Pitt subject (2021-05-17), but it appears that the feedback_time for new_learn trials was
+# correct and did require the -1.0 timing correction. Adding this exception to parse_ridl.R (MNH 20Apr2022)
+lattice::histogram(~feedback_diff | trial_type, trial_df %>% filter(id == 221604), main="221604 feedback diffs")
+
+# long delays in feedback display?
+bad_feedback <- trial_df %>% filter(feedback_diff > .3)
+write.csv(bad_feedback, file="../output/feedback_diff_problems.csv", row.names=F)
+
+# too big
+# trial_df %>% filter(feedback_diff > .5) %>% kable_table()
+
+bad_feedback %>% xtabs(~id + trial_type, .)
 ```
 
-## Expected versus observed onset times of next trial
+# Expected versus observed onset times of next trial
+
+The `trial_started_next` variable encodes the start time of the next trial: `trial_started_next = dplyr::lead(trial_started)`.
+
+Note that in the original task version, if the subject was too slow, this was just recorded in `times_too_slow`,
+but only the final timing (of the good response) was retained. Thus, if `times_too_slow > 0`, then we should
+expect divergences in the calculated versus observed onset.
+
+Importantly, though, we need to lead times_too_slow by 1 position to make it useful in calculating expected versus
+surprising timing divergences. That is, the expected onset of `feedback_time + 1` is based on the idea that
+the next trial starts on time and is completed without repeats (due to slowness). If slowness occurs, in early
+versions of the task (prior to March 2022), the row is replaced by the final repeat of the trial that the subject
+completed on time. Thus, the slowness of the next trial would lead the `trial_started_next` to diverge from `feedback_time + 1`.
+
+Add 2.5 every 10 trials to the expected onset of the next trial to account for the 2.5 breaks
 
 ```{r}
 # expected versus observed onset of next trial
-trial_df$onset_diff <- trial_df$next_start - (trial_df$feedback_time + 1.0) # 1.0 is fixed duration of feedback event
+# 1.0 is fixed duration of feedback event
+trial_df$onset_diff <- trial_df$trial_started_next - (trial_df$feedback_time + 1.0 + 2.5*(trial_df$trial %% 10 == 0)) 
 big_delays <- which(trial_df$onset_diff > 2)
-summary(trial_df$onset_diff)
-hist(trial_df$onset_diff)
-trial_df %>% filter(abs(onset_diff) > 1)
+# trial_df %>%
+#   group_by(was_slow_lead) %>%
+#   skim(onset_diff)
+
+with(trial_df, tapply(onset_diff, was_slow_lead, summary))
+
+lattice::histogram(~onset_diff | too_slow_lead > 0, trial_df)
+
+#trial_df %>% filter(onset_diff < -.1) %>% View()
+
+#bad_subj <- trial_df %>% group_by(id) %>% summarize(has_delay = any(abs(onset_diff) > 20, na.rm=TRUE))
+bad_onset <- trial_df %>% filter((abs(onset_diff) > .5 & was_slow_lead==FALSE) | (onset_diff > 20 | onset_diff < 0))
+xtabs(~id + trial_type, bad_onset)
+write.csv(bad_onset, file="../output/onset_diff_problems.csv", row.names=F)
 ```
 
-## Delays after every 10 trials
+## More problems with 221604
 
-Should be 2.5s break after every 10
+```{r}
+bad_subj <- trial_df %>% filter(id==221604) %>% mutate(neg_diff = onset_diff < 0)
+table(bad_subj$too_slow_lead)
+lattice::histogram(~onset_diff, bad_subj %>% filter(too_slow_lead == 0))
+with(bad_subj, tapply(onset_diff, was_slow_lead, summary))
+xtabs(~trial_type + (onset_diff > 0), bad_subj)
+#bad_subj %>% arrange(neg_diff, block, trial)
+write.csv(bad_subj, file="../output/bad_timing_221604.csv", row.names=F)
+```
+
+## Expected delays after every 10 trials
+
+Should be 2.5s break after every 10 trials, which is baked into onset_diff calculation above.
+
+How many trials nevertheless have > .3 second differences? Minimal
 
 ```{r}
 # Every 10 trials, the participant gets a 2.5s break
 expected_delays <- which(trial_df$trial %% 10 == 0)
-table(abs(trial_df$onset_diff[expected_delays] - 2.5) < .2)
+table(abs(trial_df$onset_diff[expected_delays]) > .3)
 ```
 
-There is one anomaly with a > 2.5 delay after trial 50. It is explained by the subject being too slow on trial 51, leading to repeat
-```{r}
-# this seems to be a situation where the subject was too slow on trial 51, which explains the delay on a 10-aligned trial
-as.data.frame(trial_df[expected_delays[which(abs(trial_df$onset_diff[expected_delays] - 2.5) > .2)],])
-```
 
-## Unexplained delays
+## Other delays
 
-These all appear to reflect trial repeats due to slowness
+The remaining delays all appear to reflect trial repeats due to slowness on the next trial. The onset_time appears to be
+correct, but matches the onset of the final repeat in the case of initial slowness.
+
 ```{r}
 # these trials are not on the every-10 trials, but have > 2s delays
 weird_delays <- setdiff(big_delays, expected_delays)
 
 # all of the unexpected delays occur on trials where the next trial was too slow
 # thus, all of these delays are explained by the repetition of the trial (and this implies that the times in the file are the final presentation)
+
+# the output here reflects the number of times that the next trial was repeated. A value of 0 would be truly unexplained delay
 trial_df$too_slow_lead[weird_delays]
 
 #trial_df %>% filter(times_too_slow > 0) %>% View()
 ```
 
-```{r, eval = FALSE, include = FALSE}
-# this code was from the initial checks before the 1.0s adjustment
-
-# about 40% of trials do have a ~1.0s difference
-prop.table(table(abs(trial_df$onset_diff - 1) < .1))
-
-# 17% have differences > 1.2s
-prop.table(table(trial_df$onset_diff > 1.2))
-
-# old: this is explained by accrej feedback_time being onset and newlearn being offset. Fixed in parse_ridl.R by subtracting 1.0 in newlearn
-# there is some dependency in the offsets -- when onset_diff is 1.0, feedback_diff is often 0.0 and vice versa
-# this seems to depend in part on whether it is an accrej or new_learn trial.
-data.frame(feedback_diff, trial_df$onset_diff, trial_df$trial_type) %>% head(n = 20)
-```
-
-## Export data to file
+## unexpected onset delays
 
 ```{r}
-
-# write to file
-fwrite(trial_df, file=file.path(repo_dir, "output", "example_trial_data.csv"))
-
-
-## leftovers
-#txt <- data.table::fread("/proj/mnhallqlab/studies/momentum/clpipe/data_onsets/220256/Subject_220256.txt")
-
+trial_df %>% filter(abs(onset_diff) > 2 & was_slow_lead == FALSE) %>%
+  #group_by(id, run_number) %>%
+  #filter(row_number() == 1L) %>%
+  kable_table()
 ```
 
+# ITI discrepancies
+
+Difference in ideal versus actual ITIs. These seem to reflect the 2.5s breaks
+
+If I follow the trial structure, would subjects see the 2.5s break stimulus immediately after feedback, then
+experience the following ITI?
+
+Note that we should discount `iti_actual - iti_ideal` differences when the next trial was too slow since that will
+lead to onset delays that get attributed to the ITI.
+
+```{r}
+trial_df$iti_diff <- trial_df$iti_actual - 2.5*(trial_df$trial %% 10 == 0) - trial_df$iti_ideal
+
+lattice::histogram(~iti_diff | was_slow_lead, trial_df)
+with(trial_df %>% filter(was_slow_lead==FALSE), summary(iti_diff))
+
+with(trial_df, tapply(iti_diff, was_slow_lead, summary))
+
+#x <- trial_df %>% filter(abs(iti_diff) > .9 & was_slow_lead == FALSE) 
+#hist(x$iti_diff)
+trial_df %>% filter(abs(iti_diff) > .9 & was_slow_lead == FALSE) %>%
+  #group_by(id, run_number) %>%
+  #filter(row_number() == 1L) %>%
+  kable_table()
+```
+
+
+
+# Export data to file
+
+```{r}
+# write to file
+fwrite(trial_df, file=file.path("../", "output", "ridl_combined.csv.gz"))
+```
+
+# Prepare data for GLMs
+
+```{r}
+trial_df_fmri <- trial_df %>% select(
+  id, run_number, trial, trial_type, outcome_fac, 
+  stim_time, choice_time, reaction_time, feedback_time, feedback_isi, iti_actual
+) %>%
+  rename(choice_onset = stim_time, feedback_onset = feedback_time) %>%
+  mutate(feedback_duration = 1.0)
+
+
+xtabs(~outcome_fac + trial_type, trial_df_fmri)
+fwrite(trial_df_fmri, file=file.path("../", "output", "ridl_combined_fmri.csv.gz"))
+```
