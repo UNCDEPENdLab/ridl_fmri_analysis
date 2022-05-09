@@ -9,9 +9,11 @@ durations:
 
 isis:
   - iti_actual
+  - feedback_isi
 
 wi_factors:
   - trial_type
+  - outcome_fac
 
 # events must consist of name, onset, and duration. isi is optional
 events:
@@ -19,6 +21,7 @@ events:
   choice:
     onset: choice_onset
     duration: reaction_time    # RT convolution
+    isi: feedback_isi
 
   feedback:
     onset: feedback_onset
@@ -41,11 +44,27 @@ signals:
     wi_factors: trial_type
     wi_formula: ~ trial_type - 1
   
+  feedback_by_outcome:
+    event: feedback
+    normalization: none
+    value_fixed: 1
+    wi_factors: outcome_fac
+    wi_formula: ~ outcome_fac - 1
+
 l1_models:
-  # overall entropy (no z-scoring)
+  # choice and feedback alone, separated by trial type
   basic:
     signals:
       - choice
       - feedback
+    contrasts:
+      include_diagonal: yes
+
+  # divide outcome trials by the result: win/loss/nothing/curtain
+  # note that curtain only happens in accept/reject
+  feedback_by_outcome:
+    signals:
+      - choice
+      - feedback_by_outcome
     contrasts:
       include_diagonal: yes

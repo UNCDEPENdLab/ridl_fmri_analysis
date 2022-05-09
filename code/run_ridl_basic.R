@@ -7,41 +7,15 @@ library(glue)
 # get trial data
 setwd("/proj/mnhallqlab/projects/ridl_fmri_analysis/code")
 trial_df <- read.csv("../output/ridl_combined_fmri.csv.gz") %>%
-  mutate(id=as.character(id))
+  mutate(
+    id = as.character(id),
+    # recode outcome_fac to note the curtain outcome in accept/reject so that feedback trials can be separated by type
+    outcome_fac = if_else(trial_type == "accrej", "curtain", outcome_fac)
+  )
 
-run_data_from_bids <- function(bids_dir, modality="func", type="task", task_name="ridl") {
-  checkmate::assert_directory_exists(bids_dir)
-  sub_dirs <- list.dirs(bids_dir, recursive = FALSE)
-  slist <- lapply(sub_dirs, function(ss) {
-    expect_dir <- file.path(ss, modality)
-    if (!checkmate::test_directory_exists(expect_dir)) {
-      warning(glue("Cannot find expected modality directory: {expect_dir}"))
-      return(NULL)
-    }
+run_df <- generate_run_data_from_bids("/proj/mnhallqlab/studies/momentum/clpipe/data_postproc2", task_name = "ridl", suffix = "_postproccessed")
 
-    # I wonder if these could diverge in order
-    nii_files <- Sys.glob(glue("{expect_dir}/sub*_{type}-{task_name}*_postproccessed.nii.gz"))
-    if (length(nii_files) == 0L) {
-      warning(glue("No NIfTI file matches in: {expect_dir}"))
-      return(NULL)
-    }
-    confound_files <- Sys.glob(glue("{expect_dir}/sub*_{type}-{task_name}*-confounds*.tsv"))
-
-    if (length(nii_files) != length(confound_files)) {
-      warning(glue("Cannot align nifti and confound files for {expect_dir}"))
-      return(NULL)
-    }
-    id <- sub("^sub-", "", basename(ss))
-    run_number <- as.integer(sub(glue(".*sub-.*_{type}-{task_name}(\\d+).*"), "\\1", nii_files, perl = TRUE)) # NB. this is not a BIDS-compliant approach. Needs to be _run-01
-    data.frame(id = id, run_number = run_number, run_nifti = nii_files, confound_input_file = confound_files)
-  })
-
-  bind_rows(slist)
-}
-
-run_df <- run_data_from_bids("/proj/mnhallqlab/studies/momentum/clpipe/data_postproc2")
-
-xtabs(~id, run_df)
+# xtabs(~id, run_df)
 
 subject_df <- run_df %>%
   group_by(id) %>%
@@ -85,4 +59,11 @@ saveRDS(gpa, file = "/proj/mnhallqlab/users/michael/ridl_fmri/gpa_snapshot_20apr
 
 run_glm_pipeline(gpa)
 
-
+gpa <- readRDS(file = "/proj/mnhallqlab/users/michael/ridl_fmri/basic_apr2022/basic_apr2022.rds")
+# for combining results after run completes
+res <- combine_feat_l3_to_afni(
+  gpa, 
+  feat_l3_combined_filename = "{gpa$output_directory}/feat_l3_combined/L1m-{l1_model}/L2m-{l2_model}_L3m-{l3_model}/l2c-{l2_cope_name}_l3c-{l3_cope_name}_stats",
+  feat_l3_combined_briknames = "l1c-{l1_cope_name}",
+  template_brain = "/proj/mnhallqlab/lab_resources/standard/mni_icbm152_nlin_asym_09c/mni_icbm152_t1_tal_nlin_asym_09c_brain.nii"
+)
