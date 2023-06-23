@@ -64,7 +64,7 @@ parse_ridl <- function(sub_id = NULL, ridl_dir, force=FALSE, matlab_dir = "/nas/
         writetable(struct2table(structfun(@transpose,log.accept_reject,'UniformOutput',false)), '<accrej_info_fname>');
         ", .open="<", .close=">"     
     ),
-    endlines = FALSE
+    endlines = FALSE, ignore.stdout=TRUE
   )
   
 #"if ~ismember('feedback_lag',log.trial_information.Properties.VariableNames), log.trial_information.feedback_lag = reshape(log.parameters_used.subject.spins',[],1); end",
