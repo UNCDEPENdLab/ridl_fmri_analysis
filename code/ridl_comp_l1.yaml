@@ -1,0 +1,133 @@
+# define columns that can be selected in different parts of the model specification
+onsets:
+  - choice_onset
+  - feedback_onset
+
+durations:
+  - reaction_time
+  - feedback_duration
+
+isis:
+  - iti_actual
+  - feedback_isi
+
+wi_factors:
+  - trial_type
+  - outcome_fac
+
+values:
+  - RPE_wins
+  - Q_chosen_wins
+  - Q_unchosen_wins
+  - Q_diff
+
+# events must consist of name, onset, and duration. isi is optional
+events:
+
+  choice:
+    onset: choice_onset
+    duration: reaction_time    # RT convolution
+    isi: feedback_isi
+
+  feedback:
+    onset: feedback_onset
+    duration: feedback_duration
+    isi: iti_actual
+
+# if not otherwise speecified, signals will default to unit height regressors with no HRF normalization
+signals:
+  choice:
+    event: choice
+    normalization: none
+    value_fixed: 1
+    wi_factors: trial_type
+    wi_formula: ~ trial_type - 1
+
+  feedback:
+    event: feedback
+    normalization: none
+    value_fixed: 1
+    wi_factors: trial_type
+    wi_formula: ~ trial_type - 1
+  
+  feedback_by_outcome:
+    event: feedback
+    normalization: none
+    value_fixed: 1
+    wi_factors: outcome_fac
+    wi_formula: ~ outcome_fac - 1
+  
+  qchosen:
+    event: choice
+    normalization: evtmax_1
+    parametric_modulator: Q_chosen_wins
+    trial_subset_expression: abs(Q_chosen_wins) > 1e-5
+
+  qunchosen:
+    event: choice
+    normalization: evtmax_1
+    parametric_modulator: Q_unchosen_wins
+    trial_subset_expression: abs(Q_unchosen_wins) > 1e-5
+  
+  qdiff:
+    event: choice
+    normalization: evtmax_1
+    parametric_modulator: Q_diff
+    trial_subset_expression: abs(Q_diff) > 1e-5
+
+  pe:
+    event: choice
+    normalization: evtmax_1
+    parametric_modulator: RPE_wins
+    trial_subset_expression: abs(RPE_wins) > 1e-5
+    
+l1_models:
+  # choice and feedback alone, separated by trial type
+  basic:
+    signals:
+      - choice
+      - feedback
+    contrasts:
+      include_diagonal: yes
+
+  # divide outcome trials by the result: win/loss/nothing/curtain
+  # note that curtain only happens in accept/reject
+  feedback_by_outcome:
+    signals:
+      - choice
+      - feedback_by_outcome
+    contrasts:
+      include_diagonal: yes
+
+  pe:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - pe
+    contrasts:
+      include_diagonal: yes
+  
+  qchosen:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - qchosen
+    contrasts:
+      include_diagonal: yes
+
+  qunchosen:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - qunchosen
+    contrasts:
+      include_diagonal: yes
+
+  qchosen_qdiff:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - qchosen
+      - qdiff
+    contrasts:
+      include_diagonal: yes
