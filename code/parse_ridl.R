@@ -77,6 +77,11 @@ parse_ridl <- function(sub_id = NULL, ridl_dir, force=FALSE, matlab_dir = "/nas/
     trial_info$times_too_slow <- 0
   }
   
+  if (is.null(trial_info$trial_completed)) {
+    message("No trial_completed field in trial_info. Will treat all trials as completed.")
+    trial_info$trial_completed <- 1
+  }
+  
   # convert experiment time to date/time using anytime package. Note that we need "20" to be prepended to year to make "2021"
   trial_info$experiment_date <- anytime::anytime(paste0("20", trial_info$experiment_date))
   
@@ -85,6 +90,13 @@ parse_ridl <- function(sub_id = NULL, ridl_dir, force=FALSE, matlab_dir = "/nas/
     message(glue("Filling in reaction_time based on choice_time - stim_time for subject directory: {sub_dir}"))
     trial_info$reaction_time <- trial_info$choice_time - trial_info$stim_time
   }
+  
+  # for trials that are too slow, the script records an NA for the choice_time
+  # https://github.com/lsolomyak/RL-EMA_fMRI/commit/037e2f3467c92b72901fa0642fadf04512133e6b
+  # RT on these trials should be 3 seconds, which is the time-out duration. Also set 'choice time' for consistency
+  trial_info$too_slow <- is.na(trial_info$choice_time) & trial_info$trial_completed == 0
+  trial_info$reaction_time[trial_info$too_slow] <- 3.0
+  trial_info$choice_time[trial_info$too_slow] <- trial_info$stim_time[trial_info$too_slow] + 3.0
   
   trial_df <- trial_data %>%
     merge(trial_info, by = c("block", "trial")) %>%

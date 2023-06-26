@@ -41,6 +41,7 @@ fmri_blocks %>% filter(subject_name==440612)
 # table(fmri_blocks$acc)
 
 #oddity of stim2 != -1000 despite having feedback == 0
+# Alon says these were standard no-feedback trials included accidentally in early testing
 xtabs(~stim2 + feedback, fmri_blocks)
 
 curious_stim2 <- fmri_blocks %>%
@@ -54,8 +55,22 @@ fmri_blocks <- fmri_blocks %>%
   rename(id=subject_name) %>%
   dplyr::select(id, run_number, trial, outcome, RPE, RPE_wins, Q_chosen, Q_chosen_wins, Q_unchosen, Q_unchosen_wins, Q_diff)
   
-trial_df <- parse_ridl_all(file.path(repo_dir, "data/momentum"), 
+trial_df <- parse_ridl_all(file.path(repo_dir, "data/momentum"), force = FALSE,
                            matlab_dir="/Applications/MATLAB_R2021b.app/bin")
+
+# check on missingness issues
+table(is.na(trial_df$choice_time))
+table(is.na(trial_df$reaction_time))
+table(is.na(trial_df$choice_time) & is.na(trial_df$reaction_time))
+
+# something weird is happening for subjects 221518 and 440443 in block 1003 (run 4). Drop these for now
+trial_df %>% filter(is.na(reaction_time)) %>% View()
+
+trial_df <- trial_df %>% filter(!(block == 1003 & id %in% c(221518, 440443)))
+
+# str(tmp)
+# tmp <- parse_ridl(sub_id=440484, ridl_dir = file.path(repo_dir, "data/momentum"), force=TRUE,
+#                            matlab_dir="/Applications/MATLAB_R2021b.app/bin")
 
 # divergences between fMRI files and EMA-derived computational model outputs
 setdiff(unique(trial_df$id), unique(fmri_blocks$id))
@@ -98,3 +113,6 @@ write.csv(outcome_coding_diverges, file = file.path(repo_dir, "output/different_
 xtabs(~outcome_fac + trial_type, trial_df_fmri)
 
 fwrite(trial_df_fmri, file=file.path(repo_dir, "output/ridl_combined_fmri.csv.gz"))
+
+## look at some funky missing RT problems.
+# sub440484 <- read.csv("/Users/hallquist/Data_Analysis/ridl_fmri_analysis/data/momentum/440484/440484_timing.csv.gz")
