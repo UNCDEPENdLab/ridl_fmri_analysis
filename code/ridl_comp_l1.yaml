@@ -34,7 +34,7 @@ events:
     duration: feedback_duration
     isi: iti_actual
 
-# if not otherwise speecified, signals will default to unit height regressors with no HRF normalization
+# if not otherwise specified, signals will default to unit height regressors with no HRF normalization
 signals:
   choice:
     event: choice
@@ -63,6 +63,14 @@ signals:
     parametric_modulator: Q_chosen_wins
     trial_subset_expression: abs(Q_chosen_wins) > 1e-5
 
+  qchosen_by_type:
+    event: choice
+    normalization: evtmax_1
+    parametric_modulator: Q_chosen_wins
+    trial_subset_expression: abs(Q_chosen_wins) > 1e-5
+    wi_factors: trial_type
+    wi_formula: ~ trial_type - 1
+  
   qunchosen:
     event: choice
     normalization: evtmax_1
@@ -123,6 +131,14 @@ l1_models:
     contrasts:
       include_diagonal: yes
 
+  qdiff:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - qdiff
+    contrasts:
+      include_diagonal: yes
+
   qchosen_qdiff:
     signals:
       - choice
@@ -131,3 +147,13 @@ l1_models:
       - qdiff
     contrasts:
       include_diagonal: yes
+
+  qchosen_by_type:
+    signals:
+      - choice
+      - feedback_by_outcome
+      - qchosen_by_type
+    contrasts:
+      include_diagonal: yes
+
+
