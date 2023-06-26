@@ -87,7 +87,7 @@ head(fmri_blocks)
 trial_df <- trial_df %>% inner_join(fmri_blocks, by=c("id", "run_number", "trial"))
 
 trial_df_fmri <- trial_df %>% select(
-  id, run_number, trial, trial_type, outcome_fac, 
+  id, run_number, trial, trial_type, outcome_fac, too_slow,
   stim_time, choice_time, reaction_time, feedback_time, feedback_isi, iti_actual,
   RPE_wins, Q_chosen_wins, Q_unchosen_wins, Q_diff
 ) %>%
@@ -105,6 +105,7 @@ trial_df_fmri %>% filter(is.na(Q_chosen_wins)) %>% group_by(run_number, trial) %
 
 # anomalous cases where outcome coding diverges between computational model outputs and MATLAB trial data
 trial_df %>% filter(outcome.y != outcome_fac) %>% pull(id) %>% table()
+
 outcome_coding_diverges <- trial_df %>% filter(outcome.y != outcome_fac) %>%
   select(id, run_number, trial, block, stim1, stim2, outcome.x, outcome.y, outcome_fac)
 
