@@ -70,7 +70,11 @@ trial_df <- trial_df %>% filter(!(block == 1003 & id %in% c(221518, 440443)))
 
 # str(tmp)
 # tmp <- parse_ridl(sub_id=440484, ridl_dir = file.path(repo_dir, "data/momentum"), force=TRUE,
-#                            matlab_dir="/Applications/MATLAB_R2021b.app/bin")
+#                             matlab_dir="/Applications/MATLAB_R2021b.app/bin")
+# 
+# tmp <- parse_ridl(sub_id=540047, ridl_dir = file.path(repo_dir, "data/momentum"), force=TRUE,
+#                   matlab_dir="/Applications/MATLAB_R2021b.app/bin")
+
 
 # divergences between fMRI files and EMA-derived computational model outputs
 setdiff(unique(trial_df$id), unique(fmri_blocks$id))
