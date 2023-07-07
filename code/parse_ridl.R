@@ -69,7 +69,12 @@ parse_ridl <- function(sub_id = NULL, ridl_dir, force=FALSE, matlab_dir = "/nas/
   
 #"if ~ismember('feedback_lag',log.trial_information.Properties.VariableNames), log.trial_information.feedback_lag = reshape(log.parameters_used.subject.spins',[],1); end",
 
-  trial_data <- data.table::fread(trial_data_fname) %>% select(-ends_with("_time")) # these are timestamps in ms code (not human readable)
+  trial_data <- data.table::fread(trial_data_fname) %>%
+    mutate(
+      reaction_time_td = (choice_time - stim_time)/1000
+    ) %>%
+    select(-ends_with("_time")) # these are timestamps in ms code (not human readable)
+      
   trial_info <- data.table::fread(trial_info_fname)
   if (is.null(trial_info$times_too_slow)) {
     # this will also occur for new 

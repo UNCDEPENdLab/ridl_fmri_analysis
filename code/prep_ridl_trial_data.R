@@ -64,7 +64,7 @@ table(is.na(trial_df$reaction_time))
 table(is.na(trial_df$choice_time) & is.na(trial_df$reaction_time))
 
 # something weird is happening for subjects 221518 and 440443 in block 1003 (run 4). Drop these for now
-trial_df %>% filter(is.na(reaction_time)) %>% View()
+# trial_df %>% filter(is.na(reaction_time)) %>% View()
 
 trial_df <- trial_df %>% filter(!(block == 1003 & id %in% c(221518, 440443)))
 
@@ -73,6 +73,9 @@ trial_df <- trial_df %>% filter(!(block == 1003 & id %in% c(221518, 440443)))
 #                             matlab_dir="/Applications/MATLAB_R2021b.app/bin")
 # 
 # tmp <- parse_ridl(sub_id=540047, ridl_dir = file.path(repo_dir, "data/momentum"), force=TRUE,
+#                   matlab_dir="/Applications/MATLAB_R2021b.app/bin")
+#
+# tmp <- parse_ridl(sub_id=540062, ridl_dir = file.path(repo_dir, "data/momentum"), force=TRUE,
 #                   matlab_dir="/Applications/MATLAB_R2021b.app/bin")
 
 
@@ -116,6 +119,12 @@ outcome_coding_diverges <- trial_df %>% filter(outcome.y != outcome_fac) %>%
 write.csv(outcome_coding_diverges, file = file.path(repo_dir, "output/different_outcome_coding.csv"), row.names=FALSE)
 
 xtabs(~outcome_fac + trial_type, trial_df_fmri)
+
+trial_df_extant <- data.table::fread(file.path(repo_dir, "output/ridl_combined_fmri.csv.gz"))
+aa <- anti_join(trial_df_fmri, trial_df_extant, by=c("id", "run_number", "trial"))
+
+trial_df_fmri %>% group_by(id) %>%
+  tally() %>% filter(n < 300)
 
 fwrite(trial_df_fmri, file=file.path(repo_dir, "output/ridl_combined_fmri.csv.gz"))
 
